@@ -20,6 +20,11 @@ socket.on("game_state", (state) => {
     myTurn = state.currentTurn === playerId;
     updateMap(); // функция обновления карты
 });
+socket.on("game_state", (state) => {
+    console.log("Обновлённое состояние:", state);
+    // Тут обновим карту, текущего игрока, захваченные штаты и т.д.
+});
+
 
 
 // Данные игрока
