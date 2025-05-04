@@ -319,6 +319,8 @@ body {
 <audio id="tick-sound" src="{{ url_for('static', filename='tick.mp3') }}"></audio>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <script src="{{ url_for('static', filename='script.js') }}"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="{{ url_for('static', filename='script.js') }}"></script>
 
 </body>
 
@@ -349,6 +351,11 @@ body {
   </div>
 </div>
 
+<div id="status">Ожидание подключения...</div>
+<div id="question-box" style="display:none;">
+    <p id="question"></p>
+    <div id="answers"></div>
+</div>
 
 
 <div id="game-container" style="display: none;">

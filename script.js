@@ -4,6 +4,91 @@ let playerId = null;
 let gameState = null;
 let myColor = null;
 let myTurn = false;
+let myId = null;
+let currentState = null;
+
+document.addEventListener("DOMContentLoaded", () => {
+    const statusEl = document.getElementById("status");
+    const questionBox = document.getElementById("question-box");
+    const questionText = document.getElementById("question");
+    const answerButtons = document.getElementById("answers");
+
+    // 1. Подключение
+    socket.on("connect", () => {
+        console.log("Подключено к серверу.");
+    });
+
+    // 2. Присвоение игрока
+    socket.on("player_data", (data) => {
+        myId = data.id;
+        console.log("Мой ID:", myId);
+    });
+
+    // 3. Получение состояния игры
+    socket.on("game_state", (state) => {
+        currentState = state;
+        updateMap(state.claimedStates, state.players);
+        myTurn = state.currentTurn === myId;
+
+        if (myTurn) {
+            statusEl.textContent = "Ваш ход! Кликните на штат для атаки.";
+        } else {
+            const current = state.players[state.currentTurn];
+            statusEl.textContent = `Ходит игрок ${current?.name || "..."}`;
+        }
+    });
+
+    // 4. Атака началась — показать вопрос
+    socket.on("attack_started", (data) => {
+        showQuestion(data);
+    });
+
+    // 5. Атака завершена
+    socket.on("attack_result", (result) => {
+        alert(`Атака завершена! ${result.message}`);
+        questionBox.style.display = "none";
+    });
+
+    // 6. Клик по карте
+    document.querySelectorAll("path").forEach(path => {
+        path.addEventListener("click", () => {
+            if (!myTurn) return;
+            const stateName = path.getAttribute("data-name") || path.id;
+            socket.emit("start_attack", { state: stateName });
+        });
+    });
+
+    // 7. Показ вопроса
+    function showQuestion(data) {
+        questionText.textContent = data.question.question;
+        answerButtons.innerHTML = "";
+        questionBox.style.display = "block";
+
+        data.question.options.forEach(option => {
+            const btn = document.createElement("button");
+            btn.textContent = option;
+            btn.addEventListener("click", () => {
+                socket.emit("answer", { answer: option });
+                questionBox.style.display = "none";
+            });
+            answerButtons.appendChild(btn);
+        });
+    }
+
+    // 8. Обновить карту
+    function updateMap(claimedStates, players) {
+        document.querySelectorAll("path").forEach(path => {
+            const stateName = path.getAttribute("data-name") || path.id;
+            const ownerId = claimedStates[stateName];
+            if (ownerId && players[ownerId]) {
+                const color = players[ownerId].color;
+                path.style.fill = color;
+            } else {
+                path.style.fill = "#ccc";
+            }
+        });
+    }
+});
 
 // Подключение к WebSocket серверу
 const socket = io();
