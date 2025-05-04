@@ -68,6 +68,7 @@ game_state = {
     "currentTurn": None,
     "claimedStates": {}
 }
+ongoing_attack = None
 
 available_colors = ["#FF0000", "#00FF00", "#0000FF", "#FFA500", "#800080"]
 available_states = [  # Пример: первые несколько штатов
@@ -103,6 +104,90 @@ def handle_connect():
 
     emit("player_data", {"playerId": sid, "color": color})
     send_game_state()
+
+@socketio.on('start_attack')
+def handle_attack(data):
+    global ongoing_attack
+    sid = request.sid
+    state = data["state"]
+
+    if game_state["currentTurn"] != sid:
+        emit("error", {"msg": "Сейчас не ваш ход"})
+        return
+
+    if state in game_state["claimedStates"] and game_state["claimedStates"][state] == sid:
+        emit("error", {"msg": "Вы уже владеете этим штатом"})
+        return
+
+    question = random.choice(QUESTIONS)
+    ongoing_attack = {
+        "state": state,
+        "question": question,
+        "answers": {}
+    }
+
+    socketio.emit("attack_started", {
+        "state": state,
+        "question": question["question"],
+        "options": question["options"]
+    })
+
+@socketio.on('answer')
+def handle_answer(data):
+    global ongoing_attack
+    sid = request.sid
+    answer = data["answer"]
+
+    if not ongoing_attack:
+        return
+
+    q = ongoing_attack["question"]
+    correct = q["answer"].lower().strip() == answer.lower().strip()
+
+    if sid not in ongoing_attack["answers"]:
+        ongoing_attack["answers"][sid] = 0
+
+    if correct:
+        ongoing_attack["answers"][sid] += 1
+
+    # Все игроки ответили — завершить раунд
+    if len(ongoing_attack["answers"]) >= len(players):
+        finish_attack()
+
+def finish_attack():
+    global ongoing_attack
+
+    state = ongoing_attack["state"]
+    answers = ongoing_attack["answers"]
+
+    if not answers:
+        winner_sid = None
+    else:
+        sorted_scores = sorted(answers.items(), key=lambda x: x[1], reverse=True)
+        top = sorted_scores[0][1]
+        top_players = [sid for sid, score in sorted_scores if score == top]
+
+        if len(top_players) == 1:
+            winner_sid = top_players[0]
+        else:
+            winner_sid = None  # ничья
+
+    if winner_sid:
+        game_state["claimedStates"][state] = winner_sid
+        print(f"Штат {state} захвачен игроком {winner_sid}")
+    else:
+        print(f"Ничья за штат {state}")
+
+    # передаём ход следующему игроку
+    turn_order = list(players.keys())
+    if game_state["currentTurn"] in turn_order:
+        idx = turn_order.index(game_state["currentTurn"])
+        idx = (idx + 1) % len(turn_order)
+        game_state["currentTurn"] = turn_order[idx]
+
+    ongoing_attack = None
+    send_game_state()
+
 
 @socketio.on('disconnect')
 def handle_disconnect():
