@@ -7,6 +7,12 @@ let myTurn = false;
 let myId = null;
 let currentState = null;
 
+const socket = io(); // Подключение WebSocket
+
+let username = prompt("Введите ваше имя:");
+let color = '#' + Math.floor(Math.random() * 16777215).toString(16);
+
+
 document.addEventListener("DOMContentLoaded", () => {
 
 
@@ -123,6 +129,7 @@ let roomId = null;
 document.getElementById("create-room-button").addEventListener("click", () => {
   socket.emit("create_room", { username, color });
 });
+
 
 // Кнопка "Играть" (позже будем использовать для присоединения)
 document.getElementById("play-button").addEventListener("click", () => {
