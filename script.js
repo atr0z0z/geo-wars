@@ -8,11 +8,7 @@ let myId = null;
 let currentState = null;
 
 document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("play-btn").addEventListener("click", () => {
-    socket.emit("join_game");
-    document.getElementById("play-btn").style.display = "none";
-    document.getElementById("status").textContent = "Ожидание других игроков...";
-});
+
 
     const statusEl = document.getElementById("status");
     const questionBox = document.getElementById("question-box");
