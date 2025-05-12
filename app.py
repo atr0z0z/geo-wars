@@ -44,14 +44,14 @@ def handle_create(data):
 
     join_room(room_id)
 
-    # Назначить стартовый штат
+    # Назначить стартовый штат (обязательно)
     start_states = ["alabama", "alaska", "arizona", "arkansas", "california", "colorado"]
     rooms[room_id]['map'][start_states[0]] = {
         'owner': username,
         'color': color
     }
 
-    # 💥 Вот эта строка обязательна:
+    # ОБЯЗАТЕЛЬНО!
     emit('room_created', {
         'room_id': room_id,
         'players': rooms[room_id]['players'],
@@ -59,6 +59,7 @@ def handle_create(data):
     }, room=request.sid)
 
 
+
     # Назначить стартовый штат
     start_states = ["alabama", "alaska", "arizona", "arkansas", "california", "colorado"]
     rooms[room_id]['map'][start_states[0]] = {
@@ -66,7 +67,7 @@ def handle_create(data):
         'color': color
     }
 
-    emit('room_created', {'room_id': room_id, 'players': rooms[room_id]['players']}, room=request.sid)
+    emit('room_created', {'room_id': room_id, 'players': rooms[room_id]['players']}, to=request.sid)
 
 @socketio.on('join_room')
 def handle_join(data):
