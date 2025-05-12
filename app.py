@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_socketio import SocketIO, emit, join_room
 import json
 import random
 import uuid
@@ -8,12 +8,13 @@ import os
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-rooms = {}
-
+# Загрузка вопросов
 with open('questions.json', encoding='utf-8') as f:
     QUESTIONS = json.load(f)
 print(f"Загружено вопросов: {len(QUESTIONS)}")
 
+# Комнаты: room_id -> {players, map, turn_index, attack}
+rooms = {}
 
 @app.route('/')
 def index():
@@ -22,7 +23,6 @@ def index():
 @app.route('/all_questions')
 def all_q():
     return jsonify(QUESTIONS)
-
 
 @app.route('/question')
 def get_question():
@@ -37,13 +37,21 @@ def handle_create(data):
 
     rooms[room_id] = {
         'players': [{ 'name': username, 'color': color, 'sid': request.sid }],
-        'map': {},  # пример: {'CA': {'owner': 'Alice', 'color': '#ff0000'}}
-        'turn_index': 0
+        'map': {},
+        'turn_index': 0,
+        'attack': None
     }
 
     join_room(room_id)
-    emit('room_created', {'room_id': room_id, 'players': rooms[room_id]['players']}, room=request.sid)
 
+    # Назначить стартовый штат
+    start_states = ["alabama", "alaska", "arizona", "arkansas", "california", "colorado"]
+    rooms[room_id]['map'][start_states[0]] = {
+        'owner': username,
+        'color': color
+    }
+
+    emit('room_created', {'room_id': room_id, 'players': rooms[room_id]['players']}, room=request.sid)
 
 @socketio.on('join_room')
 def handle_join(data):
@@ -51,114 +59,85 @@ def handle_join(data):
     username = data['username']
     color = data['color']
 
-    if room_id in rooms:
-        rooms[room_id]['players'].append({ 'name': username, 'color': color, 'sid': request.sid })
-        join_room(room_id)
-        emit('player_joined', { 'players': rooms[room_id]['players'] }, room=room_id)
-    else:
+    if room_id not in rooms:
         emit('error', {'message': 'Комната не найдена'})
-
-
-
-import os
-
-players = {}
-game_state = {
-    "players": {},
-    "currentTurn": None,
-    "claimedStates": {}
-}
-ongoing_attack = None
-
-available_colors = ["#FF0000", "#00FF00", "#0000FF", "#FFA500", "#800080"]
-available_states = [  # Пример: первые несколько штатов
-    "alabama", "alaska", "arizona", "arkansas", "california", "colorado"
-]
-
-@socketio.on('connect')
-def handle_connect():
-    sid = request.sid
-    print(f"Игрок подключился: {sid}")
-
-    if not available_colors or not available_states:
-        emit("player_data", {"error": "Нет мест для новых игроков"})
         return
 
-    color = available_colors.pop(0)
-    state = available_states.pop(0)
+    room = rooms[room_id]
+    room['players'].append({ 'name': username, 'color': color, 'sid': request.sid })
+    join_room(room_id)
 
-    players[sid] = {
-        "color": color,
-        "startState": state,
-        "score": 0
-    }
+    # Назначить стартовый штат
+    start_states = ["alabama", "alaska", "arizona", "arkansas", "california", "colorado"]
+    if len(room['players']) < len(start_states):
+        state = start_states[len(room['players']) - 1]
+        room['map'][state] = {
+            'owner': username,
+            'color': color
+        }
 
-    game_state["players"][sid] = {
-        "color": color,
-        "startState": state
-    }
-    game_state["claimedStates"][state] = sid
-
-    if game_state["currentTurn"] is None:
-        game_state["currentTurn"] = sid
-
-    emit("player_data", {"playerId": sid, "color": color})
-    send_game_state()
+    emit('player_joined', { 'players': room['players'], 'map': room['map'], 'turn': room['players'][room['turn_index']]['name'] }, room=room_id)
 
 @socketio.on('start_attack')
 def handle_attack(data):
-    global ongoing_attack
+    room_id = data['room_id']
+    state = data['state']
     sid = request.sid
-    state = data["state"]
 
-    if game_state["currentTurn"] != sid:
-        emit("error", {"msg": "Сейчас не ваш ход"})
+    room = rooms.get(room_id)
+    if not room:
+        emit('error', {'msg': 'Комната не найдена'})
         return
 
-    if state in game_state["claimedStates"] and game_state["claimedStates"][state] == sid:
-        emit("error", {"msg": "Вы уже владеете этим штатом"})
+    current_player = room['players'][room['turn_index']]
+    if current_player['sid'] != sid:
+        emit('error', {'msg': 'Сейчас не ваш ход'})
+        return
+
+    if state in room['map'] and room['map'][state]['owner'] == current_player['name']:
+        emit('error', {'msg': 'Вы уже владеете этим штатом'})
         return
 
     question = random.choice(QUESTIONS)
-    ongoing_attack = {
-        "state": state,
-        "question": question,
-        "answers": {}
+    room['attack'] = {
+        'state': state,
+        'question': question,
+        'answers': {}
     }
 
-    socketio.emit("attack_started", {
-        "state": state,
-        "question": question["question"],
-        "options": question["options"]
-    })
+    emit('attack_started', {
+        'state': state,
+        'question': question['question'],
+        'options': question['options']
+    }, room=room_id)
 
 @socketio.on('answer')
 def handle_answer(data):
-    global ongoing_attack
+    room_id = data['room_id']
+    answer = data['answer']
     sid = request.sid
-    answer = data["answer"]
 
-    if not ongoing_attack:
+    room = rooms.get(room_id)
+    if not room or not room['attack']:
         return
 
-    q = ongoing_attack["question"]
-    correct = q["answer"].lower().strip() == answer.lower().strip()
+    q = room['attack']['question']
+    correct = q['answer'].lower().strip() == answer.lower().strip()
 
-    if sid not in ongoing_attack["answers"]:
-        ongoing_attack["answers"][sid] = 0
+    if sid not in room['attack']['answers']:
+        room['attack']['answers'][sid] = 0
 
     if correct:
-        ongoing_attack["answers"][sid] += 1
+        room['attack']['answers'][sid] += 1
 
-    # Все игроки ответили — завершить раунд
-    if len(ongoing_attack["answers"]) >= len(players):
-        finish_attack()
+    if len(room['attack']['answers']) >= len(room['players']):
+        finish_attack(room_id)
 
-def finish_attack():
-    global ongoing_attack
-
-    state = ongoing_attack["state"]
-    answers = ongoing_attack["answers"]
+def finish_attack(room_id):
+    room = rooms[room_id]
+    attack = room['attack']
+    state = attack['state']
+    answers = attack['answers']
 
     if not answers:
         winner_sid = None
@@ -166,59 +145,22 @@ def finish_attack():
         sorted_scores = sorted(answers.items(), key=lambda x: x[1], reverse=True)
         top = sorted_scores[0][1]
         top_players = [sid for sid, score in sorted_scores if score == top]
-
-        if len(top_players) == 1:
-            winner_sid = top_players[0]
-        else:
-            winner_sid = None  # ничья
+        winner_sid = top_players[0] if len(top_players) == 1 else None
 
     if winner_sid:
-        game_state["claimedStates"][state] = winner_sid
-        print(f"Штат {state} захвачен игроком {winner_sid}")
-    else:
-        print(f"Ничья за штат {state}")
+        for p in room['players']:
+            if p['sid'] == winner_sid:
+                room['map'][state] = { 'owner': p['name'], 'color': p['color'] }
+                break
 
-    # передаём ход следующему игроку
-    turn_order = list(players.keys())
-    if game_state["currentTurn"] in turn_order:
-        idx = turn_order.index(game_state["currentTurn"])
-        idx = (idx + 1) % len(turn_order)
-        game_state["currentTurn"] = turn_order[idx]
+    room['turn_index'] = (room['turn_index'] + 1) % len(room['players'])
+    room['attack'] = None
 
-    ongoing_attack = None
-    send_game_state()
-
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    sid = request.sid
-    print(f"Игрок отключился: {sid}")
-
-    if sid in players:
-        available_colors.insert(0, players[sid]["color"])
-        available_states.insert(0, players[sid]["startState"])
-        del players[sid]
-        del game_state["players"][sid]
-
-        # Освобождаем захваченные штаты
-        to_remove = [s for s, owner in game_state["claimedStates"].items() if owner == sid]
-        for s in to_remove:
-            del game_state["claimedStates"][s]
-
-        if game_state["currentTurn"] == sid:
-            if players:
-                game_state["currentTurn"] = next(iter(players.keys()))
-            else:
-                game_state["currentTurn"] = None
-
-        send_game_state()
-
-def send_game_state():
-    socketio.emit("game_state", game_state)
-
+    emit('game_state', {
+        'map': room['map'],
+        'turn': room['players'][room['turn_index']]['name']
+    }, room=room_id)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     socketio.run(app, host='0.0.0.0', port=port)
-
-
