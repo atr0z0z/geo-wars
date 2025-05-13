@@ -9,7 +9,7 @@ let currentState = null;
 
 const socket = io(); // Подключение WebSocket
 
-let username = prompt("Введите ваше имя:");
+let username = prompt("Введите ваше имя: ");
 let color = '#' + Math.floor(Math.random() * 16777215).toString(16);
 document.getElementById("create-room-button").addEventListener("click", () => {
   console.log("Нажата кнопка создать комнату");
@@ -147,6 +147,7 @@ socket.on("room_created", (data) => {
   console.log("Комната создана:", data.room_id);
   alert(`Комната создана! Код: ${data.room_id}`);
 });
+
 
 // Когда другой игрок присоединился
 socket.on("player_joined", (data) => {
