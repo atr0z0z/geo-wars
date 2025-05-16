@@ -1,11 +1,12 @@
-const socket = io(); // WebSocket подключение
+const socket = io(); // Подключение WebSocket
 
 let playerId = null;
 let gameState = null;
-let myColor = null;
 let myTurn = false;
-let myId = null;
-let currentState = null;
+let username = prompt("Введите ваше имя:");
+let color = '#' + Math.floor(Math.random() * 16777215).toString(16);
+let roomId = null;
+
 
 const socket = io(); // Подключение WebSocket
 
@@ -71,11 +72,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 7. Показ вопроса
     function showQuestion(data) {
-        questionText.textContent = data.question.question;
+        questionText.textContent = data.question;
         answerButtons.innerHTML = "";
         questionBox.style.display = "block";
 
-        data.question.options.forEach(option => {
+        data.options.forEach(option => {
             const btn = document.createElement("button");
             btn.textContent = option;
             btn.addEventListener("click", () => {
@@ -146,7 +147,13 @@ document.getElementById("play-button").addEventListener("click", () => {
 socket.on("room_created", (data) => {
   console.log("Комната создана:", data.room_id);
   alert(`Комната создана! Код: ${data.room_id}`);
+  roomId = data.room_id;
+
+  // Показать карту, скрыть старт
+  document.getElementById("start-section").style.display = "none";
+  document.getElementById("game-container").style.display = "block";
 });
+
 
 
 // Когда другой игрок присоединился
